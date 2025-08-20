@@ -4,6 +4,22 @@ import type { User } from '../types';
 export class AuthService {
   // Sign up a new user
   static async signUp(email: string, password: string, name: string, role: 'student' | 'teacher' = 'student') {
+    if (!supabase) {
+      // Fallback to localStorage
+      const users = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+      const newUser = {
+        id: Date.now().toString(),
+        email,
+        name,
+        role,
+        created_at: new Date().toISOString()
+      };
+      users.push(newUser);
+      localStorage.setItem('registeredUsers', JSON.stringify(users));
+      localStorage.setItem('currentUser', JSON.stringify(newUser));
+      return { user: newUser, error: null };
+    }
+
     try {
       // First, sign up with Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
@@ -45,6 +61,17 @@ export class AuthService {
 
   // Sign in existing user
   static async signIn(email: string, password: string) {
+    if (!supabase) {
+      // Fallback to localStorage
+      const users = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+      const user = users.find((u: any) => u.email === email);
+      if (user) {
+        localStorage.setItem('currentUser', JSON.stringify(user));
+        return { user, error: null };
+      }
+      return { user: null, error: { message: 'Invalid credentials' } };
+    }
+
     try {
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
@@ -80,6 +107,11 @@ export class AuthService {
 
   // Sign out
   static async signOut() {
+    if (!supabase) {
+      localStorage.removeItem('currentUser');
+      return { error: null };
+    }
+
     try {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
@@ -91,6 +123,11 @@ export class AuthService {
 
   // Get current session
   static async getCurrentSession() {
+    if (!supabase) {
+      const user = localStorage.getItem('currentUser');
+      return user ? JSON.parse(user) : null;
+    }
+
     try {
       const { data: { session }, error } = await supabase.auth.getSession();
       if (error) throw error;
