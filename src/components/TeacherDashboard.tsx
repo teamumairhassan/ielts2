@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Users, TrendingUp, Calendar, Download, Search, Filter, Plus, BookOpen, Settings, Eye, Trash2, BarChart3, FileText, UserMinus, LineChart } from 'lucide-react';
+import { TestService } from '../services/testService';
 import ManualTestCreator from './ManualTestCreator';
 import AnalyticsChart from './AnalyticsChart';
 import type { TestResult, User, ManualTest } from '../types';
@@ -22,31 +23,46 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogout }) =
   const [selectedStudentForAnalytics, setSelectedStudentForAnalytics] = useState<string>('');
 
   useEffect(() => {
-    // Load all test results from localStorage (in a real app, this would come from a database)
-    const loadAllResults = () => {
-      const results: TestResult[] = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith('testResults_')) {
-          const studentResults = JSON.parse(localStorage.getItem(key) || '[]');
-          results.push(...studentResults);
+    const loadData = async () => {
+      try {
+        // Load all test results from Supabase
+        const results = await TestService.getAllTestResults();
+        setAllResults(results);
+        setFilteredResults(results);
+      } catch (error) {
+        console.error('Error loading test results from Supabase:', error);
+        // Fallback to localStorage
+        const results: TestResult[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith('testResults_')) {
+            const studentResults = JSON.parse(localStorage.getItem(key) || '[]');
+            results.push(...studentResults);
+          }
+        }
+        setAllResults(results);
+        setFilteredResults(results);
+      }
+
+      try {
+        // Load manual tests from Supabase
+        const tests = await TestService.getAllManualTests();
+        setManualTests(tests);
+      } catch (error) {
+        console.error('Error loading manual tests from Supabase:', error);
+        // Fallback to localStorage
+        const savedTests = localStorage.getItem('manualTests');
+        if (savedTests) {
+          setManualTests(JSON.parse(savedTests));
         }
       }
-      setAllResults(results);
-      setFilteredResults(results);
+
+      // Load all registered students (still from localStorage for now)
+      const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+      setStudents(registeredUsers.filter((user: any) => user.role === 'student'));
     };
 
-    // Load manual tests
-    const savedTests = localStorage.getItem('manualTests');
-    if (savedTests) {
-      setManualTests(JSON.parse(savedTests));
-    }
-
-    // Load all registered students
-    const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
-    setStudents(registeredUsers.filter((user: any) => user.role === 'student'));
-
-    loadAllResults();
+    loadData();
   }, []);
 
   useEffect(() => {
@@ -120,29 +136,60 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogout }) =
     URL.revokeObjectURL(url);
   };
 
-  const handleSaveTest = (test: ManualTest) => {
-    const updatedTests = [...manualTests, test];
-    setManualTests(updatedTests);
-    localStorage.setItem('manualTests', JSON.stringify(updatedTests));
-    setShowTestCreator(false);
-    
-    // Log for debugging
-    console.log('Test saved successfully:', test.title);
-    console.log('Total tests now:', updatedTests.length);
+  const handleSaveTest = async (test: ManualTest) => {
+    try {
+      // Save to Supabase
+      const savedTest = await TestService.createManualTest(test);
+      const updatedTests = [...manualTests, savedTest];
+      setManualTests(updatedTests);
+      setShowTestCreator(false);
+      console.log('Test saved successfully to Supabase:', savedTest.title);
+    } catch (error) {
+      console.error('Error saving test to Supabase:', error);
+      // Fallback to localStorage
+      const updatedTests = [...manualTests, test];
+      setManualTests(updatedTests);
+      localStorage.setItem('manualTests', JSON.stringify(updatedTests));
+      setShowTestCreator(false);
+      console.log('Test saved to localStorage as fallback:', test.title);
+    }
   };
 
-  const handleDeleteTest = (testId: string) => {
-    const updatedTests = manualTests.filter(test => test.id !== testId);
-    setManualTests(updatedTests);
-    localStorage.setItem('manualTests', JSON.stringify(updatedTests));
+  const handleDeleteTest = async (testId: string) => {
+    try {
+      // Delete from Supabase
+      await TestService.deleteManualTest(testId);
+      const updatedTests = manualTests.filter(test => test.id !== testId);
+      setManualTests(updatedTests);
+    } catch (error) {
+      console.error('Error deleting test from Supabase:', error);
+      // Fallback to localStorage
+      const updatedTests = manualTests.filter(test => test.id !== testId);
+      setManualTests(updatedTests);
+      localStorage.setItem('manualTests', JSON.stringify(updatedTests));
+    }
   };
 
-  const toggleTestStatus = (testId: string) => {
-    const updatedTests = manualTests.map(test =>
-      test.id === testId ? { ...test, isActive: !test.isActive } : test
-    );
-    setManualTests(updatedTests);
-    localStorage.setItem('manualTests', JSON.stringify(updatedTests));
+  const toggleTestStatus = async (testId: string) => {
+    const test = manualTests.find(t => t.id === testId);
+    if (!test) return;
+
+    try {
+      // Update in Supabase
+      const updatedTest = await TestService.updateManualTest(testId, { isActive: !test.isActive });
+      const updatedTests = manualTests.map(t =>
+        t.id === testId ? updatedTest : t
+      );
+      setManualTests(updatedTests);
+    } catch (error) {
+      console.error('Error updating test status in Supabase:', error);
+      // Fallback to localStorage
+      const updatedTests = manualTests.map(test =>
+        test.id === testId ? { ...test, isActive: !test.isActive } : test
+      );
+      setManualTests(updatedTests);
+      localStorage.setItem('manualTests', JSON.stringify(updatedTests));
+    }
   };
 
   const removeStudent = (studentId: string) => {

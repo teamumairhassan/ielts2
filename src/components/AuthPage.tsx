@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { User, Mail, Lock, UserCheck, BookOpen } from 'lucide-react';
+import { AuthService } from '../services/authService';
 
 interface AuthPageProps {
   onLogin: (user: any) => void;
@@ -14,7 +15,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
   });
   const [error, setError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -30,76 +31,91 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
       return;
     }
 
-    if (isLogin) {
-      // Login logic for students
-      const savedUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
-      const user = savedUsers.find((u: any) => u.email === formData.email && u.password === formData.password);
-      
-      if (user) {
-        // Ensure user has correct role
-        const userWithRole = {
-          ...user,
-          role: user.role || 'student'
-        };
-        onLogin({
-          id: userWithRole.id,
-          name: userWithRole.name,
-          email: userWithRole.email,
-          role: userWithRole.role
-        });
+    try {
+      if (isLogin) {
+        // Try Supabase login first
+        try {
+          const { user } = await AuthService.signIn(formData.email, formData.password);
+          onLogin(user);
+        } catch (supabaseError) {
+          // Fallback to localStorage for existing users
+          const savedUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+          const user = savedUsers.find((u: any) => u.email === formData.email && u.password === formData.password);
+          
+          if (user) {
+            const userWithRole = {
+              ...user,
+              role: user.role || 'student'
+            };
+            onLogin({
+              id: userWithRole.id,
+              name: userWithRole.name,
+              email: userWithRole.email,
+              role: userWithRole.role
+            });
+          } else {
+            setError('Invalid email or password');
+          }
+        }
       } else {
-        setError('Invalid email or password');
-      }
-    } else {
-      // Signup logic for students
-      if (!formData.name.trim()) {
-        setError('Please enter your full name');
-        return;
-      }
-      
-      if (!formData.email.trim()) {
-        setError('Please enter your email address');
-        return;
-      }
-      
-      if (!formData.password.trim()) {
-        setError('Please enter a password');
-        return;
-      }
-      
-      if (formData.password.length < 6) {
-        setError('Password must be at least 6 characters long');
-        return;
-      }
+        // Signup logic
+        if (!formData.name.trim()) {
+          setError('Please enter your full name');
+          return;
+        }
+        
+        if (!formData.email.trim()) {
+          setError('Please enter your email address');
+          return;
+        }
+        
+        if (!formData.password.trim()) {
+          setError('Please enter a password');
+          return;
+        }
+        
+        if (formData.password.length < 6) {
+          setError('Password must be at least 6 characters long');
+          return;
+        }
 
-      const savedUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
-      const existingUser = savedUsers.find((u: any) => u.email === formData.email);
-      
-      if (existingUser) {
-        setError('Email already registered. Please login instead.');
-        return;
+        // Try Supabase signup first
+        try {
+          const { user } = await AuthService.signUp(formData.email, formData.password, formData.name, 'student');
+          onLogin(user);
+        } catch (supabaseError) {
+          // Fallback to localStorage
+          const savedUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+          const existingUser = savedUsers.find((u: any) => u.email === formData.email);
+          
+          if (existingUser) {
+            setError('Email already registered. Please login instead.');
+            return;
+          }
+
+          const newUser = {
+            id: Math.random().toString(36).substr(2, 9),
+            name: formData.name,
+            email: formData.email,
+            password: formData.password,
+            role: 'student'
+          };
+
+          savedUsers.push(newUser);
+          localStorage.setItem('registeredUsers', JSON.stringify(savedUsers));
+          localStorage.setItem(`testResults_${newUser.id}`, JSON.stringify([]));
+          
+          onLogin({
+            id: newUser.id,
+            name: newUser.name,
+            email: newUser.email,
+            role: 'student'
+          });
+        }
       }
-
-      const newUser = {
-        id: Math.random().toString(36).substr(2, 9),
-        name: formData.name,
-        email: formData.email,
-        password: formData.password,
-        role: 'student'
-      };
-
-      savedUsers.push(newUser);
-      localStorage.setItem('registeredUsers', JSON.stringify(savedUsers));
-      
-      // Also initialize empty test results for the new user
-      localStorage.setItem(`testResults_${newUser.id}`, JSON.stringify([]));
-      
-      onLogin({
-        id: newUser.id,
-        name: newUser.name,
-        email: newUser.email,
-        role: 'student'
-      });
+    } catch (error: any) {
+      console.error('Auth error:', error);
+      setError(error.message || 'An error occurred. Please try again.');
     }
   };
 

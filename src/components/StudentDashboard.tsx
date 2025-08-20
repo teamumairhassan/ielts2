@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PlusCircle, Clock, TrendingUp, BookOpen, Award, Calendar, BarChart3, Zap, Users, LineChart } from 'lucide-react';
+import { TestService } from '../services/testService';
 import AnalyticsChart from './AnalyticsChart';
 import type { TestResult, User, ManualTest } from '../types';
 
@@ -16,48 +17,66 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, onStartTest, 
   const [selectedResult, setSelectedResult] = useState<TestResult | null>(null);
 
   useEffect(() => {
-    // Load test results from localStorage
-    const savedResults = localStorage.getItem(`testResults_${user.id}`);
-    if (savedResults) {
+    const loadData = async () => {
       try {
-        const parsedResults = JSON.parse(savedResults);
-        setTestResults(Array.isArray(parsedResults) ? parsedResults : []);
+        // Load test results from Supabase
+        const results = await TestService.getStudentTestResults(user.id);
+        setTestResults(results);
       } catch (error) {
-        console.error('Error parsing test results:', error);
-        setTestResults([]);
-        // Reset corrupted data
-        localStorage.setItem(`testResults_${user.id}`, JSON.stringify([]));
+        console.error('Error loading test results from Supabase:', error);
+        // Fallback to localStorage
+        const savedResults = localStorage.getItem(`testResults_${user.id}`);
+        if (savedResults) {
+          try {
+            const parsedResults = JSON.parse(savedResults);
+            setTestResults(Array.isArray(parsedResults) ? parsedResults : []);
+          } catch (parseError) {
+            console.error('Error parsing test results:', parseError);
+            setTestResults([]);
+          }
+        } else {
+          setTestResults([]);
+        }
       }
-    } else {
-      // Initialize empty array if no results exist
-      localStorage.setItem(`testResults_${user.id}`, JSON.stringify([]));
-      setTestResults([]);
-    }
 
-    // Load available manual tests
-    const savedManualTests = localStorage.getItem('manualTests');
-    if (savedManualTests) {
       try {
-        const allTests = JSON.parse(savedManualTests);
-        if (Array.isArray(allTests)) {
-          // Filter tests that are active and either not scheduled or scheduled for now/past
-          const now = new Date();
-          const availableTests = allTests.filter((test: ManualTest) => {
-            if (!test.isActive) return false;
-            if (!test.scheduledDate) return true;
-            return new Date(test.scheduledDate) <= now;
-          });
-          setManualTests(availableTests);
+        // Load available manual tests from Supabase
+        const allTests = await TestService.getActiveManualTests();
+        const now = new Date();
+        const availableTests = allTests.filter((test: ManualTest) => {
+          if (!test.scheduledDate) return true;
+          return new Date(test.scheduledDate) <= now;
+        });
+        setManualTests(availableTests);
+      } catch (error) {
+        console.error('Error loading manual tests from Supabase:', error);
+        // Fallback to localStorage
+        const savedManualTests = localStorage.getItem('manualTests');
+        if (savedManualTests) {
+          try {
+            const allTests = JSON.parse(savedManualTests);
+            if (Array.isArray(allTests)) {
+              const now = new Date();
+              const availableTests = allTests.filter((test: ManualTest) => {
+                if (!test.isActive) return false;
+                if (!test.scheduledDate) return true;
+                return new Date(test.scheduledDate) <= now;
+              });
+              setManualTests(availableTests);
+            } else {
+              setManualTests([]);
+            }
+          } catch (parseError) {
+            console.error('Error parsing manual tests:', parseError);
+            setManualTests([]);
+          }
         } else {
           setManualTests([]);
         }
-      } catch (error) {
-        console.error('Error parsing manual tests:', error);
-        setManualTests([]);
       }
-    } else {
-      setManualTests([]);
-    }
+    };
+
+    loadData();
   }, [user.id]);
 
   const averageScore = testResults.length > 0 

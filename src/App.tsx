@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { supabase } from './lib/supabase';
+import { AuthService } from './services/authService';
+import { TestService } from './services/testService';
 import AuthPage from './components/AuthPage';
 import StudentDashboard from './components/StudentDashboard';
 import TeacherDashboard from './components/TeacherDashboard';
@@ -8,53 +11,69 @@ import type { User, TestResult, ManualTest } from './types';
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
   const [currentView, setCurrentView] = useState<'auth' | 'dashboard' | 'test' | 'results'>('auth');
   const [currentTestResult, setCurrentTestResult] = useState<TestResult | null>(null);
   const [currentManualTest, setCurrentManualTest] = useState<ManualTest | null>(null);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('currentUser');
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-      setCurrentView('dashboard');
-    }
+    // Check for existing Supabase session
+    const checkSession = async () => {
+      try {
+        const sessionData = await AuthService.getCurrentSession();
+        if (sessionData) {
+          setUser(sessionData.user);
+          setCurrentView('dashboard');
+        }
+      } catch (error) {
+        console.error('Session check error:', error);
+        // Fallback to localStorage for existing users
+        const savedUser = localStorage.getItem('currentUser');
+        if (savedUser) {
+          setUser(JSON.parse(savedUser));
+          setCurrentView('dashboard');
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkSession();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        const sessionData = await AuthService.getCurrentSession();
+        if (sessionData) {
+          setUser(sessionData.user);
+          setCurrentView('dashboard');
+        }
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
+        setCurrentView('auth');
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  const handleLogin = (userData: User) => {
+  const handleLogin = async (userData: User) => {
     setUser(userData);
-    localStorage.setItem('currentUser', JSON.stringify(userData));
-    
-    // Ensure user data is properly stored in registeredUsers if it's a student
-    if (userData.role === 'student') {
-      const savedUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
-      const existingUserIndex = savedUsers.findIndex((u: any) => u.id === userData.id);
-      
-      if (existingUserIndex === -1) {
-        // Add user to registered users if not already there
-        savedUsers.push({
-          id: userData.id,
-          name: userData.name,
-          email: userData.email,
-          password: '', // Password not stored in currentUser
-          role: userData.role
-        });
-        localStorage.setItem('registeredUsers', JSON.stringify(savedUsers));
-      }
-      
-      // Ensure test results array exists
-      const existingResults = localStorage.getItem(`testResults_${userData.id}`);
-      if (!existingResults) {
-        localStorage.setItem(`testResults_${userData.id}`, JSON.stringify([]));
-      }
-    }
-    
     setCurrentView('dashboard');
   };
 
-  const handleLogout = () => {
-    setUser(null);
-    localStorage.removeItem('currentUser');
-    setCurrentView('auth');
+  const handleLogout = async () => {
+    try {
+      await AuthService.signOut();
+      setUser(null);
+      setCurrentView('auth');
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Fallback to localStorage cleanup
+      setUser(null);
+      localStorage.removeItem('currentUser');
+      setCurrentView('auth');
+    }
   };
 
   const handleStartTest = () => {
@@ -67,15 +86,21 @@ function App() {
     setCurrentView('test');
   };
 
-  const handleTestComplete = (result: TestResult) => {
+  const handleTestComplete = async (result: TestResult) => {
     setCurrentTestResult(result);
     
-    // Save result to localStorage
-    if (user) {
-      const existingResults = localStorage.getItem(`testResults_${user.id}`);
-      const results = existingResults ? JSON.parse(existingResults) : [];
-      results.unshift(result);
-      localStorage.setItem(`testResults_${user.id}`, JSON.stringify(results));
+    // Save result to Supabase
+    try {
+      await TestService.saveTestResult(result);
+    } catch (error) {
+      console.error('Error saving test result:', error);
+      // Fallback to localStorage
+      if (user) {
+        const existingResults = localStorage.getItem(`testResults_${user.id}`);
+        const results = existingResults ? JSON.parse(existingResults) : [];
+        results.unshift(result);
+        localStorage.setItem(`testResults_${user.id}`, JSON.stringify(results));
+      }
     }
     
     setCurrentView('results');
@@ -92,6 +117,18 @@ function App() {
     setCurrentManualTest(null);
     setCurrentView('test');
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <h1 className="text-2xl font-semibold text-gray-900 mb-4">IELTS Academic AI Platform</h1>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (currentView === 'auth') {
     return <AuthPage onLogin={handleLogin} />;
