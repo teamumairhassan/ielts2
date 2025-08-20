@@ -4,6 +4,19 @@ import type { ManualTest, TestResult } from '../types';
 export class TestService {
   // Create a new manual test
   static async createManualTest(test: Omit<ManualTest, 'id' | 'createdAt'>) {
+    if (!supabase) {
+      // Fallback to localStorage
+      const tests = JSON.parse(localStorage.getItem('manualTests') || '[]');
+      const newTest = {
+        ...test,
+        id: Date.now().toString(),
+        created_at: new Date().toISOString()
+      };
+      tests.push(newTest);
+      localStorage.setItem('manualTests', JSON.stringify(tests));
+      return { data: newTest, error: null };
+    }
+
     try {
       const { data, error } = await supabase
         .from('manual_tests')
@@ -35,6 +48,12 @@ export class TestService {
 
   // Get all active manual tests
   static async getActiveManualTests(): Promise<ManualTest[]> {
+    if (!supabase) {
+      // Fallback to localStorage
+      const tests = JSON.parse(localStorage.getItem('manualTests') || '[]');
+      return { data: tests, error: null };
+    }
+
     try {
       const { data, error } = await supabase
         .from('manual_tests')
@@ -53,6 +72,12 @@ export class TestService {
 
   // Get all manual tests (for teachers)
   static async getAllManualTests(): Promise<ManualTest[]> {
+    if (!supabase) {
+      // Fallback to localStorage
+      const tests = JSON.parse(localStorage.getItem('manualTests') || '[]');
+      return { data: tests, error: null };
+    }
+
     try {
       const { data, error } = await supabase
         .from('manual_tests')
@@ -124,6 +149,20 @@ export class TestService {
 
   // Save test result
   static async saveTestResult(result: Omit<TestResult, 'id'>) {
+    if (!supabase) {
+      // Fallback to localStorage
+      const key = `testResults_${result.studentId}`;
+      const results = JSON.parse(localStorage.getItem(key) || '[]');
+      const newResult = {
+        ...result,
+        id: Date.now().toString(),
+        created_at: new Date().toISOString()
+      };
+      results.push(newResult);
+      localStorage.setItem(key, JSON.stringify(results));
+      return { data: newResult, error: null };
+    }
+
     try {
       const { data, error } = await supabase
         .from('test_results')
@@ -160,6 +199,25 @@ export class TestService {
 
   // Get test results for a student
   static async getStudentTestResults(studentId: string): Promise<TestResult[]> {
+    if (!supabase) {
+      // Fallback to localStorage
+      if (studentId) {
+        const results = JSON.parse(localStorage.getItem(`testResults_${studentId}`) || '[]');
+        return { data: results, error: null };
+      } else {
+        // Get all results for teacher view
+        const allResults: any[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key?.startsWith('testResults_')) {
+            const results = JSON.parse(localStorage.getItem(key) || '[]');
+            allResults.push(...results);
+          }
+        }
+        return { data: allResults, error: null };
+      }
+    }
+
     try {
       const { data, error } = await supabase
         .from('test_results')
@@ -178,6 +236,19 @@ export class TestService {
 
   // Get all test results (for teachers)
   static async getAllTestResults(): Promise<TestResult[]> {
+    if (!supabase) {
+      // Fallback to localStorage
+      const allResults: any[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key?.startsWith('testResults_')) {
+          const results = JSON.parse(localStorage.getItem(key) || '[]');
+          allResults.push(...results);
+        }
+      }
+      return { data: allResults, error: null };
+    }
+
     try {
       const { data, error } = await supabase
         .from('test_results')
