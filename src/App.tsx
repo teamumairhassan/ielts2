@@ -20,18 +20,39 @@ function App() {
     // Check for existing Supabase session
     const checkSession = async () => {
       try {
-        const sessionData = await AuthService.getCurrentSession();
-        if (sessionData) {
-          setUser(sessionData.user);
-          setCurrentView('dashboard');
+        if (supabase) {
+          const sessionData = await AuthService.getCurrentSession();
+          if (sessionData) {
+            setUser(sessionData.user);
+            setCurrentView('dashboard');
+          }
+        } else {
+          // Fallback to localStorage for existing users
+          const savedUser = localStorage.getItem('currentUser');
+          if (savedUser) {
+            try {
+              const parsedUser = JSON.parse(savedUser);
+              setUser(parsedUser);
+              setCurrentView('dashboard');
+            } catch (error) {
+              console.error('Error parsing saved user:', error);
+              localStorage.removeItem('currentUser');
+            }
+          }
         }
       } catch (error) {
         console.error('Session check error:', error);
         // Fallback to localStorage for existing users
         const savedUser = localStorage.getItem('currentUser');
         if (savedUser) {
-          setUser(JSON.parse(savedUser));
-          setCurrentView('dashboard');
+          try {
+            const parsedUser = JSON.parse(savedUser);
+            setUser(parsedUser);
+            setCurrentView('dashboard');
+          } catch (error) {
+            console.error('Error parsing saved user:', error);
+            localStorage.removeItem('currentUser');
+          }
         }
       } finally {
         setLoading(false);
@@ -45,15 +66,19 @@ function App() {
     
     if (supabase) {
       const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-        if (event === 'SIGNED_IN' && session) {
-          const sessionData = await AuthService.getCurrentSession();
-          if (sessionData) {
-            setUser(sessionData.user);
-            setCurrentView('dashboard');
+        try {
+          if (event === 'SIGNED_IN' && session) {
+            const sessionData = await AuthService.getCurrentSession();
+            if (sessionData) {
+              setUser(sessionData.user);
+              setCurrentView('dashboard');
+            }
+          } else if (event === 'SIGNED_OUT') {
+            setUser(null);
+            setCurrentView('auth');
           }
-        } else if (event === 'SIGNED_OUT') {
-          setUser(null);
-          setCurrentView('auth');
+        } catch (error) {
+          console.error('Auth state change error:', error);
         }
       });
       subscription = authSubscription;

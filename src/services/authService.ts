@@ -125,7 +125,17 @@ export class AuthService {
   static async getCurrentSession() {
     if (!supabase) {
       const user = localStorage.getItem('currentUser');
-      return user ? JSON.parse(user) : null;
+      if (user) {
+        try {
+          const parsedUser = JSON.parse(user);
+          return { user: parsedUser };
+        } catch (error) {
+          console.error('Error parsing current user:', error);
+          localStorage.removeItem('currentUser');
+          return null;
+        }
+      }
+      return null;
     }
 
     try {
@@ -154,6 +164,17 @@ export class AuthService {
       };
     } catch (error) {
       console.error('Get session error:', error);
+      // Fallback to localStorage
+      const user = localStorage.getItem('currentUser');
+      if (user) {
+        try {
+          const parsedUser = JSON.parse(user);
+          return { user: parsedUser };
+        } catch (parseError) {
+          console.error('Error parsing fallback user:', parseError);
+          localStorage.removeItem('currentUser');
+        }
+      }
       return null;
     }
   }
