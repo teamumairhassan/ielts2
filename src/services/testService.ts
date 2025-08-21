@@ -10,11 +10,11 @@ export class TestService {
       const newTest = {
         ...test,
         id: Date.now().toString(),
-        created_at: new Date().toISOString()
+        createdAt: new Date().toISOString()
       };
       tests.push(newTest);
       localStorage.setItem('manualTests', JSON.stringify(tests));
-      return { data: newTest, error: null };
+      return newTest;
     }
 
     try {
@@ -51,7 +51,7 @@ export class TestService {
     if (!supabase) {
       // Fallback to localStorage
       const tests = JSON.parse(localStorage.getItem('manualTests') || '[]');
-      return { data: tests, error: null };
+      return tests.filter((test: any) => test.isActive);
     }
 
     try {
@@ -75,7 +75,7 @@ export class TestService {
     if (!supabase) {
       // Fallback to localStorage
       const tests = JSON.parse(localStorage.getItem('manualTests') || '[]');
-      return { data: tests, error: null };
+      return tests;
     }
 
     try {
@@ -156,11 +156,11 @@ export class TestService {
       const newResult = {
         ...result,
         id: Date.now().toString(),
-        created_at: new Date().toISOString()
+        createdAt: new Date().toISOString()
       };
       results.push(newResult);
       localStorage.setItem(key, JSON.stringify(results));
-      return { data: newResult, error: null };
+      return newResult;
     }
 
     try {
@@ -203,7 +203,7 @@ export class TestService {
       // Fallback to localStorage
       if (studentId) {
         const results = JSON.parse(localStorage.getItem(`testResults_${studentId}`) || '[]');
-        return { data: results, error: null };
+        return results;
       } else {
         // Get all results for teacher view
         const allResults: any[] = [];
@@ -214,7 +214,7 @@ export class TestService {
             allResults.push(...results);
           }
         }
-        return { data: allResults, error: null };
+        return allResults;
       }
     }
 
@@ -246,7 +246,7 @@ export class TestService {
           allResults.push(...results);
         }
       }
-      return { data: allResults, error: null };
+      return allResults;
     }
 
     try {
