@@ -41,20 +41,29 @@ function App() {
     checkSession();
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session) {
-        const sessionData = await AuthService.getCurrentSession();
-        if (sessionData) {
-          setUser(sessionData.user);
-          setCurrentView('dashboard');
+    let subscription: any = null;
+    
+    if (supabase) {
+      const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        if (event === 'SIGNED_IN' && session) {
+          const sessionData = await AuthService.getCurrentSession();
+          if (sessionData) {
+            setUser(sessionData.user);
+            setCurrentView('dashboard');
+          }
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null);
+          setCurrentView('auth');
         }
-      } else if (event === 'SIGNED_OUT') {
-        setUser(null);
-        setCurrentView('auth');
-      }
-    });
+      });
+      subscription = authSubscription;
+    }
 
-    return () => subscription.unsubscribe();
+    return () => {
+      if (subscription) {
+        subscription.unsubscribe();
+      }
+    };
   }, []);
 
   const handleLogin = async (userData: User) => {
